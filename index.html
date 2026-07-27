@@ -222,7 +222,7 @@
   <div class="panel" id="panel-tiers"><div id="tierBoard"></div></div>
   <div class="panel" id="panel-watchlist"><div id="wlList"></div></div>
   <div class="panel" id="panel-settings"><div id="settingsBody"></div></div>
-  <div style="text-align:center;color:#3a415c;font-size:11px;margin-top:34px">v1.2</div>
+  <div style="text-align:center;color:#3a415c;font-size:11px;margin-top:34px">v1.3</div>
 </div>
 
 <div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
@@ -434,7 +434,7 @@ function openMovieModal(m){
     wlBtn.className="btn ghost"; wlBtn.textContent = wlEntry ? "✕ Remove from Watchlist" : "🎟️ Watchlist";
     wlBtn.onclick = ()=>{
       if (S.watchlist[m.id]){ delete S.watchlist[m.id]; pushWatchlist(m.id,false); toast("Removed from watchlist"); }
-      else { S.watchlist[m.id] = Object.assign({}, m, { added:new Date().toISOString() }); pushWatchlist(m.id,true); toast("Added to watchlist 🎟️"); }
+      else { S.watchlist[m.id] = Object.assign({}, m, { added:new Date().toISOString(), pushed:!!S.session }); pushWatchlist(m.id,true); toast("Added to watchlist 🎟️"); }
       save(); render(); closeModal();
     };
     acts.appendChild(wlBtn);
@@ -477,19 +477,31 @@ async function fullSync(quiet){
   if (!S.session || !S.accountId) return;
   try {
     const rated = await fetchAllPages("/account/"+S.accountId+"/rated/movies");
+    const remoteRated = {};
     rated.forEach(r=>{
       const m = movieFromTmdb(r);
       const rating = (r.rating||0)/2;
+      remoteRated[m.id]=1;
       if (S.watched[m.id]) { S.watched[m.id].rating = rating; Object.assign(S.watched[m.id], { title:m.title, year:m.year, poster:m.poster, genres:m.genres, overview:m.overview }); }
       else S.watched[m.id] = Object.assign(m, { rating, rewatch:null, note:"", tierOverride:null, added:new Date().toISOString() });
     });
+    // push up any local ratings TMDB doesn't have yet (e.g. rated before logging in)
+    for (const id in S.watched){
+      if (S.watched[id].rating > 0 && !remoteRated[id]) pushRating(id, S.watched[id].rating);
+    }
     const wl = await fetchAllPages("/account/"+S.accountId+"/watchlist/movies");
     const remoteIds = {};
     wl.forEach(r=>{
       const m = movieFromTmdb(r); remoteIds[m.id]=1;
-      if (!S.watchlist[m.id] && !S.watched[m.id]) S.watchlist[m.id] = Object.assign(m, { added:new Date().toISOString() });
+      if (S.watchlist[m.id]) S.watchlist[m.id].pushed = true;
+      else if (!S.watched[m.id]) S.watchlist[m.id] = Object.assign(m, { added:new Date().toISOString(), pushed:true });
     });
-    for (const id in S.watchlist) if (!remoteIds[id]) delete S.watchlist[id];
+    for (const id in S.watchlist){
+      if (!remoteIds[id]){
+        if (S.watchlist[id].pushed) delete S.watchlist[id]; // removed on another device
+        else { pushWatchlist(id, true); S.watchlist[id].pushed = true; } // never made it to TMDB — push now
+      }
+    }
     save(); render();
     if (!quiet) toast("Synced with TMDB ✓");
   } catch(e){ if (!quiet) toast("Sync failed"); }
