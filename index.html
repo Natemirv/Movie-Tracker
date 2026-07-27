@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d14">
+<title>🎬 Movie Tracker</title>
+<style>
+  :root {
+    --bg: #0b0d14; --bg2: #10131f; --card: #171b2a; --card2: #1e2336;
+    --ink: #f2f3f8; --muted: #8b91a7; --gold: #f5b431; --accent: #e94f4f;
+    --green: #3ddc84; --border: #262c42;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(1200px 500px at 50% -10%, #1a1f33 0%, var(--bg) 60%);
+    color: var(--ink); min-height: 100vh; padding: 20px 14px 90px;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 14px; position: relative; }
+  h1 {
+    font-size: 26px; letter-spacing: 1px; font-weight: 800;
+    background: linear-gradient(90deg, #f5b431, #f07c4f, #e94f4f);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .stats { display: flex; justify-content: center; gap: 20px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .stats b { color: var(--ink); font-size: 15px; display: block; text-align: center; }
+  .gear { position: absolute; right: 0; top: 0; background: none; border: none; font-size: 20px; cursor: pointer; opacity: .7; }
+  .gear:hover { opacity: 1; }
+  .syncpill { position: absolute; left: 0; top: 4px; font-size: 10.5px; color: var(--muted); }
+  .syncpill.on { color: var(--green); }
+
+  /* search */
+  .search-wrap { position: relative; margin-bottom: 16px; }
+  .search-wrap input {
+    width: 100%; padding: 14px 16px 14px 44px; border: 1px solid var(--border); border-radius: 14px;
+    font-size: 16px; background: var(--card2); color: var(--ink);
+    box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  }
+  .search-wrap .mag { position: absolute; left: 15px; top: 13px; font-size: 17px; opacity: .6; }
+  .search-wrap input::placeholder { color: #565d78; }
+  .search-wrap input:focus { outline: none; border-color: var(--gold); }
+  .ac-list {
+    position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 60;
+    background: var(--card2); border: 1px solid var(--border); border-radius: 12px;
+    overflow: hidden; box-shadow: 0 16px 40px rgba(0,0,0,.6); display: none; max-height: 400px; overflow-y: auto;
+  }
+  .ac-item { padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 11px; }
+  .ac-item:hover { background: rgba(245,180,49,.1); }
+  .ac-item img, .ac-item .noimg { width: 38px; height: 57px; border-radius: 5px; object-fit: cover; flex-shrink: 0;
+    background: var(--bg2); display: flex; align-items: center; justify-content: center; font-size: 17px; }
+  .ac-item .t { font-size: 14.5px; font-weight: 600; }
+  .ac-item .y { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .ac-item .badge { margin-left: auto; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 10px; white-space: nowrap; }
+  .badge.seen { background: rgba(61,220,132,.15); color: var(--green); }
+  .badge.queued { background: rgba(245,180,49,.15); color: var(--gold); }
+
+  .tabs { display: flex; gap: 6px; margin-bottom: 18px; background: var(--bg2); padding: 5px; border-radius: 14px; border: 1px solid var(--border); }
+  .tab { flex: 1; padding: 10px 4px; border-radius: 10px; border: none; background: transparent;
+    font-size: 13px; font-weight: 700; cursor: pointer; color: var(--muted); }
+  .tab.active { background: linear-gradient(135deg, #f5b431, #e94f4f); color: #14100a; }
+  .panel { display: none; } .panel.active { display: block; }
+
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .chip { padding: 6px 12px; border-radius: 20px; border: 1px solid var(--border); background: var(--bg2);
+    font-size: 12px; cursor: pointer; color: var(--muted); font-weight: 700; }
+  .chip.active { background: rgba(245,180,49,.15); border-color: var(--gold); color: var(--gold); }
+
+  /* poster grid */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 12px; }
+  .pc { cursor: pointer; transition: transform .15s; position: relative; }
+  .pc:hover { transform: translateY(-3px) scale(1.02); }
+  .pc img, .pc .noimg {
+    width: 100%; aspect-ratio: 2/3; object-fit: cover; border-radius: 10px; display: block;
+    border: 1px solid rgba(255,255,255,.08); box-shadow: 0 8px 20px rgba(0,0,0,.4);
+  }
+  .pc .noimg { display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 30px; text-align: center; padding: 8px; gap: 6px; }
+  .pc .noimg span { font-size: 11px; font-weight: 700; color: rgba(255,255,255,.85); line-height: 1.25; }
+  .pc .tierb {
+    position: absolute; top: 6px; left: 6px; width: 24px; height: 24px; border-radius: 7px;
+    display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 900;
+    color: #14100a; box-shadow: 0 2px 6px rgba(0,0,0,.5);
+  }
+  .pc .rw { position: absolute; top: 6px; right: 6px; font-size: 14px; filter: drop-shadow(0 2px 4px rgba(0,0,0,.7)); }
+  .pc .st { text-align: center; color: var(--gold); font-size: 12px; letter-spacing: .5px; margin-top: 5px; }
+  .pc .st .off { color: #2e3552; }
+
+  .empty { text-align: center; color: var(--muted); padding: 44px 16px; font-size: 14px; grid-column: 1/-1; line-height: 1.6; }
+  .empty .big { font-size: 38px; display: block; margin-bottom: 8px; }
+
+  /* tier board */
+  .tier-row { display: flex; gap: 12px; margin-bottom: 10px; background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 10px; align-items: flex-start; }
+  .tier-label { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 900; color: #14100a; flex-shrink: 0; }
+  .tier-movies { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; min-height: 44px; align-items: center; }
+  .tier-movies img, .tier-movies .noimg {
+    width: 44px; height: 66px; border-radius: 6px; object-fit: cover; cursor: pointer;
+    border: 1px solid rgba(255,255,255,.1); display:flex; align-items:center; justify-content:center; font-size: 18px; background: var(--bg2);
+  }
+  .tier-movies .hint { font-size: 12px; color: #3a415c; }
+
+  /* watchlist */
+  .wl-item { background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 10px; margin-bottom: 10px; display: flex; align-items: center; gap: 13px; }
+  .wl-item img, .wl-item .noimg { width: 50px; height: 75px; border-radius: 7px; object-fit: cover; flex-shrink: 0;
+    background: var(--bg2); display: flex; align-items: center; justify-content: center; font-size: 21px; }
+  .wl-info { flex: 1; min-width: 0; }
+  .wl-title { font-weight: 700; font-size: 15px; }
+  .wl-title .yr { color: var(--muted); font-weight: 400; font-size: 12.5px; margin-left: 5px; }
+  .wl-sub { font-size: 11.5px; color: var(--gold); font-weight: 700; margin-top: 3px; text-transform: uppercase; letter-spacing: .5px; }
+
+  .btn { padding: 10px 18px; border-radius: 10px; border: none;
+    background: linear-gradient(135deg, #f5b431, #e94f4f); color: #14100a; font-size: 14px; font-weight: 800; cursor: pointer; }
+  .btn:hover { filter: brightness(1.1); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.small { padding: 7px 13px; font-size: 12.5px; border-radius: 8px; }
+  .btn.ghost { background: var(--bg2); color: var(--ink); border: 1px solid var(--border); }
+  .btn.x { background: none; border: none; color: var(--muted); font-size: 17px; padding: 4px 8px; }
+  .btn.x:hover { color: var(--accent); }
+
+  /* modal */
+  .overlay { position: fixed; inset: 0; background: rgba(5,6,12,.8); backdrop-filter: blur(5px);
+    display: none; align-items: flex-start; justify-content: center; z-index: 100; padding: 30px 14px; overflow-y: auto; }
+  .overlay.open { display: flex; }
+  .modal { background: var(--card2); border: 1px solid var(--border); border-radius: 18px;
+    max-width: 540px; width: 100%; padding: 20px; box-shadow: 0 24px 60px rgba(0,0,0,.6); }
+  .modal-top { display: flex; gap: 16px; }
+  .modal-top img, .modal-top .noimg { width: 120px; border-radius: 10px; flex-shrink: 0; align-self: flex-start;
+    aspect-ratio: 2/3; object-fit: cover; background: var(--bg2); display: flex; align-items: center; justify-content: center; font-size: 36px; }
+  .modal-info { flex: 1; min-width: 0; }
+  .modal-info h2 { font-size: 20px; line-height: 1.2; }
+  .modal-info .yr { color: var(--muted); font-weight: 400; font-size: 14px; }
+  .gtag { display: inline-block; margin: 8px 6px 0 0; padding: 3px 10px; border-radius: 12px;
+    font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .8px;
+    background: rgba(245,180,49,.13); color: var(--gold); border: 1px solid rgba(245,180,49,.3); }
+  .ov { font-size: 12.5px; color: var(--muted); margin-top: 10px; line-height: 1.5;
+    display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+
+  .sec { margin-top: 16px; }
+  .lbl { font-size: 11px; color: var(--muted); font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 8px; display: block; }
+
+  /* half-star input */
+  .starin { display: inline-flex; cursor: pointer; user-select: none; }
+  .starin .s { position: relative; font-size: 34px; color: #2e3552; padding: 0 1px; }
+  .starin .s .fill { position: absolute; left: 1px; top: 0; overflow: hidden; color: var(--gold); width: 0;
+    text-shadow: 0 0 14px rgba(245,180,49,.4); pointer-events: none; }
+  .rating-num { font-size: 14px; color: var(--gold); font-weight: 800; margin-left: 10px; vertical-align: middle; }
+  .tier-preview { display: inline-flex; align-items: center; gap: 7px; margin-left: 10px; vertical-align: middle; font-size: 12px; color: var(--muted); }
+  .tp-badge { width: 22px; height: 22px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 900; color: #14100a; }
+
+  .toggle { display: flex; gap: 8px; }
+  .toggle button { padding: 8px 16px; border-radius: 20px; border: 1px solid var(--border);
+    background: var(--bg2); cursor: pointer; font-size: 13px; font-weight: 700; color: var(--muted); }
+  .toggle button.on-yes { background: rgba(61,220,132,.15); border-color: var(--green); color: var(--green); }
+  .toggle button.on-no { background: rgba(233,79,79,.15); border-color: var(--accent); color: var(--accent); }
+
+  textarea, select, input[type=text], input[type=password] {
+    width: 100%; padding: 11px 13px; border: 1px solid var(--border); border-radius: 10px;
+    font-size: 14px; background: var(--bg2); color: var(--ink); font-family: inherit;
+  }
+  textarea { resize: vertical; min-height: 44px; }
+  textarea:focus, select:focus, input:focus { outline: none; border-color: var(--gold); }
+  .modal-actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+
+  /* settings + setup */
+  .setcard { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+  .setcard h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--gold); margin-bottom: 10px; }
+  .setcard p { font-size: 13.5px; color: var(--muted); line-height: 1.6; margin-bottom: 10px; }
+  .setcard p b { color: var(--ink); }
+  .setcard a { color: var(--gold); }
+  .setrow { display: flex; gap: 8px; margin-top: 8px; }
+  .okmsg { font-size: 13px; margin-top: 8px; font-weight: 700; }
+  .okmsg.good { color: var(--green); } .okmsg.bad { color: var(--accent); }
+  .steps { font-size: 13.5px; color: var(--muted); line-height: 1.9; margin: 6px 0 10px 18px; }
+  .steps b { color: var(--ink); }
+
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 200;
+    background: var(--card2); border: 1px solid var(--border); color: var(--ink); padding: 11px 20px;
+    border-radius: 12px; font-size: 13.5px; font-weight: 600; box-shadow: 0 10px 30px rgba(0,0,0,.5);
+    opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 90vw; text-align: center; }
+  .toast.show { opacity: 1; }
+  @media (max-width: 480px) {
+    .grid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 9px; }
+    .modal-top img, .modal-top .noimg { width: 96px; }
+    .starin .s { font-size: 30px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="syncpill" id="syncPill"></span>
+    <h1>🎬 MOVIE TRACKER</h1>
+    <button class="gear" id="gearBtn" title="Settings">⚙️</button>
+    <div class="stats">
+      <span><b id="sWatched">0</b>watched</span>
+      <span><b id="sAvg">–</b>avg ★</span>
+      <span><b id="sQueue">0</b>queued</span>
+    </div>
+  </header>
+
+  <div class="search-wrap" id="searchWrap">
+    <span class="mag">🔍</span>
+    <input type="text" id="searchBox" placeholder="Search any movie ever made…" autocomplete="off">
+    <div class="ac-list" id="acList"></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="watched">🍿 Watched</button>
+    <button class="tab" data-tab="tiers">🏆 Tiers</button>
+    <button class="tab" data-tab="watchlist">🎟️ Watchlist</button>
+  </div>
+
+  <div class="panel active" id="panel-watched">
+    <div class="filters" id="genreFilters"></div>
+    <div class="grid" id="watchedGrid"></div>
+  </div>
+  <div class="panel" id="panel-tiers"><div id="tierBoard"></div></div>
+  <div class="panel" id="panel-watchlist"><div id="wlList"></div></div>
+  <div class="panel" id="panel-settings"><div id="settingsBody"></div></div>
+</div>
+
+<div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ================= constants ================= */
+const API = "https://api.themoviedb.org/3";
+const IMG = "https://image.tmdb.org/t/p/";
+const GENRE_IDS = {28:"Action",12:"Adventure",16:"Animation",35:"Comedy",80:"Crime",99:"Documentary",18:"Drama",
+  10751:"Family",14:"Fantasy",36:"History",27:"Horror",10402:"Music",9648:"Mystery",10749:"Romance",
+  878:"Sci-Fi",10770:"TV Movie",53:"Thriller",10752:"War",37:"Western"};
+const GENRE_EMOJI = {Action:"💥",Adventure:"🗺️",Animation:"🎨",Comedy:"😂",Crime:"🕵️",Documentary:"🎥",Drama:"🎭",
+  Family:"🏡",Fantasy:"🐉",History:"📜",Horror:"👻",Music:"🎶",Mystery:"🔍",Romance:"💕","Sci-Fi":"🚀",
+  "TV Movie":"📺",Thriller:"🔪",War:"⚔️",Western:"🤠"};
+const TIERS = ["S","A","B","C","D","F"];
+const TIER_COLORS = {S:"#f5b431",A:"#3ddc84",B:"#4fa8f0",C:"#b08cf0",D:"#f07c4f",F:"#e94f4f"};
+
+/* ================= state ================= */
+let S = loadStore();
+let activeGenre = "All", currentTab = "watched", pendingToken = null;
+
+function loadStore() {
+  let base = { key:"", session:"", accountId:null, watched:{}, watchlist:{} };
+  try { return Object.assign(base, JSON.parse(localStorage.getItem("movietracker")) || {}); }
+  catch(e){ return base; }
+}
+function save(){ localStorage.setItem("movietracker", JSON.stringify(S)); }
+function esc(s){ const d=document.createElement("div"); d.textContent = s==null?"":s; return d.innerHTML; }
+function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),2600); }
+
+/* ================= TMDB api ================= */
+async function tmdb(path, params={}, method="GET", body=null){
+  const u = new URL(API+path);
+  u.searchParams.set("api_key", S.key);
+  if (S.session) u.searchParams.set("session_id", S.session);
+  for (const k in params) u.searchParams.set(k, params[k]);
+  const opt = { method, headers:{ "Content-Type":"application/json" } };
+  if (body) opt.body = JSON.stringify(body);
+  const r = await fetch(u, opt);
+  if (!r.ok) throw new Error("TMDB "+r.status);
+  return r.json();
+}
+
+/* ================= movie helpers ================= */
+function tierFromRating(r){
+  if (!r) return null;
+  if (r >= 4.5) return "S"; if (r >= 4) return "A"; if (r >= 3) return "B";
+  if (r >= 2) return "C"; if (r >= 1) return "D"; return "F";
+}
+function tierOf(m){ return m.tierOverride || tierFromRating(m.rating); }
+function movieFromTmdb(r){
+  const genres = (r.genre_ids||[]).map(id=>GENRE_IDS[id]).filter(Boolean);
+  return { id:r.id, title:r.title, year:(r.release_date||"").slice(0,4)||null,
+    poster:r.poster_path||null, genres, overview:r.overview||"" };
+}
+function posterImg(m, cls, size){
+  if (m.poster) return '<img class="'+(cls||"")+'" loading="lazy" src="'+IMG+(size||"w342")+m.poster+'" alt="">';
+  const em = GENRE_EMOJI[(m.genres||[])[0]] || "🎬";
+  return '<div class="noimg '+(cls||"")+'">'+em+'<span>'+esc(m.title)+'</span></div>';
+}
+function starDisplay(r){
+  let h="";
+  for(let i=1;i<=5;i++){
+    if (r>=i) h+="★";
+    else if (r>=i-0.5) h+="⯨";
+    else h+='<span class="off">★</span>';
+  }
+  return h.replace(/⯨/g,'<span style="position:relative;display:inline-block"><span class="off">★</span><span style="position:absolute;left:0;top:0;width:50%;overflow:hidden;color:var(--gold)">★</span></span>');
+}
+
+/* ================= half-star input widget ================= */
+function starInput(container, value, onChange){
+  container.innerHTML = "";
+  container.className = "starin";
+  let cur = value || 0;
+  const stars = [];
+  for (let i=1;i<=5;i++){
+    const s = document.createElement("span");
+    s.className = "s"; s.innerHTML = '★<span class="fill">★</span>';
+    s.addEventListener("click", e=>{
+      const rect = s.getBoundingClientRect();
+      const half = (e.clientX - rect.left) < rect.width/2;
+      const v = i - (half?0.5:0);
+      cur = (cur===v)?0:v; // click same value again to clear
+      paint(); onChange(cur);
+    });
+    container.appendChild(s); stars.push(s);
+  }
+  function paint(){
+    stars.forEach((s,idx)=>{
+      const i = idx+1, f = s.querySelector(".fill");
+      f.style.width = cur>=i ? "100%" : (cur>=i-0.5 ? "50%" : "0");
+    });
+  }
+  paint();
+  return { set(v){ cur=v; paint(); } };
+}
+
+/* ================= search ================= */
+const searchBox = document.getElementById("searchBox");
+const acList = document.getElementById("acList");
+let searchTimer = null, lastResults = [];
+
+searchBox.addEventListener("input", ()=>{
+  clearTimeout(searchTimer);
+  const q = searchBox.value.trim();
+  if (q.length < 2){ acList.style.display="none"; return; }
+  searchTimer = setTimeout(()=>doSearch(q), 300);
+});
+searchBox.addEventListener("blur", ()=>setTimeout(()=>acList.style.display="none", 200));
+searchBox.addEventListener("focus", ()=>{ if (lastResults.length && searchBox.value.trim().length>=2) acList.style.display="block"; });
+
+async function doSearch(q){
+  if (!S.key) { openSettings(); toast("Add your TMDB API key first"); return; }
+  try {
+    const j = await tmdb("/search/movie", { query:q, include_adult:"false" });
+    lastResults = (j.results||[]).slice(0,8).map(movieFromTmdb);
+    if (!lastResults.length){ acList.innerHTML='<div class="ac-item"><div class="t" style="color:var(--muted)">No results</div></div>'; acList.style.display="block"; return; }
+    acList.innerHTML = lastResults.map((m,i)=>{
+      let badge = "";
+      if (S.watched[m.id]) badge = '<span class="badge seen">✓ WATCHED</span>';
+      else if (S.watchlist[m.id]) badge = '<span class="badge queued">ON LIST</span>';
+      return '<div class="ac-item" data-i="'+i+'">'+posterImg(m,"","w92")+
+        '<div><div class="t">'+esc(m.title)+'</div><div class="y">'+(m.year||"")+
+        (m.genres[0]?" · "+m.genres[0]:"")+'</div></div>'+badge+'</div>';
+    }).join("");
+    acList.style.display = "block";
+  } catch(e){ toast("Search failed — check API key / internet"); }
+}
+acList.addEventListener("mousedown", e=>{
+  const el = e.target.closest(".ac-item");
+  if (!el || el.getAttribute("data-i")==null) return;
+  e.preventDefault();
+  const m = lastResults[+el.getAttribute("data-i")];
+  if (m){ searchBox.value=""; acList.style.display="none"; openMovieModal(m); }
+});
+
+/* ================= modal ================= */
+const overlay = document.getElementById("overlay");
+const modalEl = document.getElementById("modal");
+overlay.addEventListener("click", e=>{ if (e.target===overlay) closeModal(); });
+document.addEventListener("keydown", e=>{ if (e.key==="Escape") closeModal(); });
+function closeModal(){ overlay.classList.remove("open"); modalEl.innerHTML=""; }
+
+function openMovieModal(m){
+  const existing = S.watched[m.id];
+  const wlEntry = S.watchlist[m.id];
+  const draft = existing ? Object.assign({}, existing)
+    : Object.assign({}, m, { rating:0, rewatch:null, note:"", tierOverride:null, added:new Date().toISOString() });
+
+  modalEl.innerHTML =
+    '<div class="modal-top">'+posterImg(m,"","w342")+
+      '<div class="modal-info"><h2>'+esc(m.title)+(m.year?' <span class="yr">('+m.year+')</span>':"")+'</h2>'+
+      '<div>'+(m.genres||[]).map(g=>'<span class="gtag">'+esc(g)+'</span>').join("")+'</div>'+
+      (m.overview?'<div class="ov">'+esc(m.overview)+'</div>':"")+
+      '</div></div>'+
+    '<div class="sec"><span class="lbl">Your rating</span>'+
+      '<div style="display:flex;align-items:center;flex-wrap:wrap"><span id="starHost"></span>'+
+      '<span class="rating-num" id="ratingNum"></span><span class="tier-preview" id="tierPrev"></span></div></div>'+
+    '<div class="sec"><span class="lbl">Would you rewatch it?</span>'+
+      '<div class="toggle"><button id="rwY">👍 Yes</button><button id="rwN">👎 No</button></div></div>'+
+    '<div class="sec"><span class="lbl">Tier (auto from rating — override if you want)</span>'+
+      '<select id="tierSel"><option value="">Auto</option>'+TIERS.map(t=>'<option value="'+t+'">'+t+' tier</option>').join("")+'</select></div>'+
+    '<div class="sec"><span class="lbl">Note</span><textarea id="noteBox" placeholder="One-line thoughts (optional)"></textarea></div>'+
+    '<div class="modal-actions" id="modalActions"></div>';
+
+  const ratingNum = document.getElementById("ratingNum");
+  const tierPrev = document.getElementById("tierPrev");
+  const tierSel = document.getElementById("tierSel");
+  tierSel.value = draft.tierOverride || "";
+  document.getElementById("noteBox").value = draft.note || "";
+
+  function paintMeta(){
+    ratingNum.textContent = draft.rating ? draft.rating.toFixed(1).replace(".0","")+" / 5" : "";
+    const t = draft.tierOverride || tierFromRating(draft.rating);
+    tierPrev.innerHTML = t ? '→ <span class="tp-badge" style="background:'+TIER_COLORS[t]+'">'+t+'</span>'+(draft.tierOverride?" (manual)":""):"";
+  }
+  starInput(document.getElementById("starHost"), draft.rating, v=>{ draft.rating=v; paintMeta(); });
+  paintMeta();
+
+  const rwY = document.getElementById("rwY"), rwN = document.getElementById("rwN");
+  function paintRw(){ rwY.className = draft.rewatch===true?"on-yes":""; rwN.className = draft.rewatch===false?"on-no":""; }
+  rwY.onclick = ()=>{ draft.rewatch = draft.rewatch===true?null:true; paintRw(); };
+  rwN.onclick = ()=>{ draft.rewatch = draft.rewatch===false?null:false; paintRw(); };
+  paintRw();
+  tierSel.onchange = ()=>{ draft.tierOverride = tierSel.value||null; paintMeta(); };
+
+  const acts = document.getElementById("modalActions");
+  const saveBtn = document.createElement("button");
+  saveBtn.className="btn"; saveBtn.textContent = existing ? "💾 Save changes" : "✓ Save to Watched";
+  saveBtn.onclick = async ()=>{
+    draft.note = document.getElementById("noteBox").value.trim();
+    S.watched[m.id] = draft;
+    if (S.watchlist[m.id]){ delete S.watchlist[m.id]; pushWatchlist(m.id, false); }
+    save(); render(); closeModal();
+    toast(existing?"Updated":"Added to watched 🍿");
+    pushRating(m.id, draft.rating);
+  };
+  acts.appendChild(saveBtn);
+
+  if (!existing){
+    const wlBtn = document.createElement("button");
+    wlBtn.className="btn ghost"; wlBtn.textContent = wlEntry ? "✕ Remove from Watchlist" : "🎟️ Watchlist";
+    wlBtn.onclick = ()=>{
+      if (S.watchlist[m.id]){ delete S.watchlist[m.id]; pushWatchlist(m.id,false); toast("Removed from watchlist"); }
+      else { S.watchlist[m.id] = Object.assign({}, m, { added:new Date().toISOString() }); pushWatchlist(m.id,true); toast("Added to watchlist 🎟️"); }
+      save(); render(); closeModal();
+    };
+    acts.appendChild(wlBtn);
+  } else {
+    const delBtn = document.createElement("button");
+    delBtn.className="btn ghost"; delBtn.textContent="🗑 Delete";
+    delBtn.onclick = ()=>{
+      delete S.watched[m.id]; save(); render(); closeModal(); toast("Deleted");
+      if (S.session) tmdb("/movie/"+m.id+"/rating", {}, "DELETE").catch(()=>{});
+    };
+    acts.appendChild(delBtn);
+  }
+  const closeBtn = document.createElement("button");
+  closeBtn.className="btn ghost"; closeBtn.style.marginLeft="auto"; closeBtn.textContent="Close";
+  closeBtn.onclick = closeModal;
+  acts.appendChild(closeBtn);
+  overlay.classList.add("open");
+}
+
+/* ================= TMDB sync ================= */
+function pushRating(id, rating){
+  if (!S.session || !rating) return;
+  tmdb("/movie/"+id+"/rating", {}, "POST", { value: rating*2 }).catch(()=>{});
+}
+function pushWatchlist(id, add){
+  if (!S.session || !S.accountId) return;
+  tmdb("/account/"+S.accountId+"/watchlist", {}, "POST", { media_type:"movie", media_id:id, watchlist:add }).catch(()=>{});
+}
+async function fetchAllPages(path){
+  let page=1, out=[];
+  while (page <= 20){
+    const j = await tmdb(path, { page });
+    out = out.concat(j.results||[]);
+    if (page >= (j.total_pages||1)) break;
+    page++;
+  }
+  return out;
+}
+async function fullSync(quiet){
+  if (!S.session || !S.accountId) return;
+  try {
+    const rated = await fetchAllPages("/account/"+S.accountId+"/rated/movies");
+    rated.forEach(r=>{
+      const m = movieFromTmdb(r);
+      const rating = (r.rating||0)/2;
+      if (S.watched[m.id]) { S.watched[m.id].rating = rating; Object.assign(S.watched[m.id], { title:m.title, year:m.year, poster:m.poster, genres:m.genres, overview:m.overview }); }
+      else S.watched[m.id] = Object.assign(m, { rating, rewatch:null, note:"", tierOverride:null, added:new Date().toISOString() });
+    });
+    const wl = await fetchAllPages("/account/"+S.accountId+"/watchlist/movies");
+    const remoteIds = {};
+    wl.forEach(r=>{
+      const m = movieFromTmdb(r); remoteIds[m.id]=1;
+      if (!S.watchlist[m.id] && !S.watched[m.id]) S.watchlist[m.id] = Object.assign(m, { added:new Date().toISOString() });
+    });
+    for (const id in S.watchlist) if (!remoteIds[id]) delete S.watchlist[id];
+    save(); render();
+    if (!quiet) toast("Synced with TMDB ✓");
+  } catch(e){ if (!quiet) toast("Sync failed"); }
+}
+
+/* ================= auth ================= */
+async function startLogin(){
+  try {
+    const j = await tmdb("/authentication/token/new");
+    pendingToken = j.request_token;
+    const redirect = location.origin.startsWith("http") ? "?redirect_to="+encodeURIComponent(location.origin+location.pathname) : "";
+    window.open("https://www.themoviedb.org/authenticate/"+pendingToken+redirect, "_blank");
+    renderSettings();
+  } catch(e){ toast("Could not start login — check API key"); }
+}
+async function finishLogin(token){
+  try {
+    const j = await tmdb("/authentication/session/new", {}, "POST", { request_token: token });
+    S.session = j.session_id;
+    const acct = await tmdb("/account");
+    S.accountId = acct.id;
+    save(); pendingToken=null;
+    toast("Logged in as "+(acct.username||"you")+" ✓");
+    renderSettings(); renderSyncPill();
+    fullSync(true);
+  } catch(e){ toast("Login not finished — did you approve on TMDB?"); }
+}
+function logout(){ S.session=""; S.accountId=null; save(); renderSettings(); renderSyncPill(); toast("Logged out"); }
+
+/* ================= export / import ================= */
+function exportData(){
+  const blob = new Blob([JSON.stringify(S, null, 1)], { type:"application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "movie-tracker-backup.json";
+  a.click();
+}
+function importData(file){
+  const rd = new FileReader();
+  rd.onload = ()=>{
+    try {
+      const j = JSON.parse(rd.result);
+      if (!j.watched && !j.watchlist) throw 0;
+      S.watched = Object.assign({}, S.watched, j.watched||{});
+      S.watchlist = Object.assign({}, S.watchlist, j.watchlist||{});
+      if (j.key && !S.key) S.key = j.key;
+      save(); render(); toast("Imported ✓");
+    } catch(e){ toast("Not a valid backup file"); }
+  };
+  rd.readAsText(file);
+}
+
+/* ================= rendering ================= */
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click", ()=>{
+  currentTab = t.getAttribute("data-tab"); showTab();
+}));
+function showTab(){
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.getAttribute("data-tab")===currentTab));
+  ["watched","tiers","watchlist","settings"].forEach(p=>{
+    document.getElementById("panel-"+p).classList.toggle("active", p===currentTab);
+  });
+}
+document.getElementById("gearBtn").addEventListener("click", openSettings);
+function openSettings(){ currentTab="settings"; showTab(); renderSettings(); }
+
+function renderSyncPill(){
+  const p = document.getElementById("syncPill");
+  if (S.session){ p.textContent = "● synced"; p.className = "syncpill on"; }
+  else { p.textContent = "○ local only"; p.className = "syncpill"; }
+}
+
+function render(){
+  const w = Object.values(S.watched).sort((a,b)=>(b.added||"").localeCompare(a.added||""));
+  const wl = Object.values(S.watchlist).sort((a,b)=>(b.added||"").localeCompare(a.added||""));
+
+  document.getElementById("sWatched").textContent = w.length;
+  document.getElementById("sQueue").textContent = wl.length;
+  const rated = w.filter(m=>m.rating>0);
+  document.getElementById("sAvg").textContent = rated.length ? (rated.reduce((a,m)=>a+m.rating,0)/rated.length).toFixed(1) : "–";
+
+  // genre filters
+  const gset = {};
+  w.forEach(m=>(m.genres||[]).forEach(g=>gset[g]=1));
+  const genres = ["All"].concat(Object.keys(gset).sort());
+  if (!genres.includes(activeGenre)) activeGenre="All";
+  document.getElementById("genreFilters").innerHTML = genres.length>2 ? genres.map(g=>
+    '<button class="chip'+(g===activeGenre?" active":"")+'" data-g="'+esc(g)+'">'+
+    (g==="All"?"All":(GENRE_EMOJI[g]||"")+" "+esc(g))+'</button>').join("") : "";
+
+  // watched grid
+  const shown = w.filter(m=>activeGenre==="All"||(m.genres||[]).includes(activeGenre));
+  const grid = document.getElementById("watchedGrid");
+  if (!w.length) grid.innerHTML = '<div class="empty"><span class="big">🍿</span>Nothing logged yet.<br>Search any movie above to get started.</div>';
+  else if (!shown.length) grid.innerHTML = '<div class="empty">No '+esc(activeGenre)+' movies yet.</div>';
+  else grid.innerHTML = shown.map(m=>{
+    const t = tierOf(m);
+    return '<div class="pc" data-id="'+m.id+'">'+posterImg(m,"","w342")+
+      (t?'<span class="tierb" style="background:'+TIER_COLORS[t]+'">'+t+'</span>':"")+
+      (m.rewatch===true?'<span class="rw" title="Would rewatch">↺</span>':"")+
+      '<div class="st">'+(m.rating?starDisplay(m.rating):'<span class="off">not rated</span>')+'</div></div>';
+  }).join("");
+
+  // tier board
+  const tb = document.getElementById("tierBoard");
+  let tbHtml = "";
+  TIERS.forEach(t=>{
+    const movies = w.filter(m=>tierOf(m)===t);
+    tbHtml += '<div class="tier-row"><div class="tier-label" style="background:'+TIER_COLORS[t]+'">'+t+'</div>'+
+      '<div class="tier-movies">'+(movies.length?movies.map(m=>
+        '<span class="pc" data-id="'+m.id+'" title="'+esc(m.title)+'" style="display:contents">'+posterImg(m,"","w154")+'</span>').join("")
+        :'<span class="hint">—</span>')+'</div></div>';
+  });
+  const unranked = w.filter(m=>!tierOf(m));
+  if (unranked.length){
+    tbHtml += '<div class="tier-row"><div class="tier-label" style="background:#3a415c;color:#cdd2e4;font-size:11px">n/a</div>'+
+      '<div class="tier-movies">'+unranked.map(m=>'<span class="pc" data-id="'+m.id+'" style="display:contents">'+posterImg(m,"","w154")+'</span>').join("")+'</div></div>';
+  }
+  tb.innerHTML = w.length ? tbHtml : '<div class="empty"><span class="big">🏆</span>Rate some movies and they\'ll stack up here by tier.</div>';
+
+  // watchlist
+  const wlEl = document.getElementById("wlList");
+  wlEl.innerHTML = wl.length ? wl.map(m=>
+    '<div class="wl-item">'+posterImg(m,"","w154")+
+    '<div class="wl-info"><div class="wl-title">'+esc(m.title)+(m.year?'<span class="yr">'+m.year+'</span>':"")+'</div>'+
+    '<div class="wl-sub">'+(m.genres||[]).slice(0,2).join(" · ")+'</div></div>'+
+    '<button class="btn small" data-watch="'+m.id+'">✓ Watched it</button>'+
+    '<button class="btn x" data-rm="'+m.id+'">✕</button></div>').join("")
+    : '<div class="empty"><span class="big">🎟️</span>Watchlist is empty.<br>Search a movie above and hit “Watchlist”.</div>';
+
+  renderSyncPill();
+}
+
+document.addEventListener("click", e=>{
+  const chip = e.target.closest(".chip[data-g]");
+  if (chip){ activeGenre = chip.getAttribute("data-g"); render(); return; }
+  const pc = e.target.closest(".pc[data-id]");
+  if (pc){ const m = S.watched[pc.getAttribute("data-id")]; if (m) openMovieModal(m); return; }
+  const wbtn = e.target.closest("[data-watch]");
+  if (wbtn){ const m = S.watchlist[wbtn.getAttribute("data-watch")]; if (m) openMovieModal(m); return; }
+  const rbtn = e.target.closest("[data-rm]");
+  if (rbtn){ const id = rbtn.getAttribute("data-rm"); delete S.watchlist[id]; pushWatchlist(id,false); save(); render(); return; }
+});
+
+/* ================= settings ================= */
+function renderSettings(){
+  const el = document.getElementById("settingsBody");
+  const hasKey = !!S.key;
+  el.innerHTML =
+    '<div class="setcard"><h3>1 · TMDB API key '+(hasKey?"✓":"")+'</h3>'+
+    (hasKey?'<p>Key saved. Posters and search are live.</p>'
+      :'<p>This app uses <b>TMDB</b> (The Movie Database) for posters and search. Get a free key:</p>'+
+       '<ol class="steps"><li>Create an account at <a href="https://www.themoviedb.org/signup" target="_blank">themoviedb.org/signup</a></li>'+
+       '<li>Go to <a href="https://www.themoviedb.org/settings/api" target="_blank">Settings → API</a> and request a key (choose “Developer”, personal use)</li>'+
+       '<li>Copy the <b>API Key (v3 auth)</b> and paste it below</li></ol>')+
+    '<div class="setrow"><input type="password" id="keyIn" placeholder="Paste API key (v3)" value="'+esc(S.key)+'">'+
+    '<button class="btn" id="keySave">Save</button></div><div class="okmsg" id="keyMsg"></div></div>'+
+
+    '<div class="setcard"><h3>2 · TMDB login (sync across devices)</h3>'+
+    (S.session
+      ? '<p>Logged in ✓ — your ratings and watchlist sync through your TMDB account.</p>'+
+        '<div class="setrow"><button class="btn small" id="syncNow">🔄 Sync now</button>'+
+        '<button class="btn small ghost" id="logoutBtn">Log out</button></div>'
+      : '<p>Optional but recommended: log in with your TMDB account so ratings and watchlist follow you between phone and laptop. (Notes, rewatch answers and tier overrides stay on each device — use export/import below to move those.)</p>'+
+        (pendingToken
+          ? '<p><b>Step 2:</b> approve access in the TMDB tab that opened, then come back and press:</p><button class="btn" id="approveDone">I approved — finish login</button>'
+          : '<button class="btn" id="loginBtn" '+(hasKey?"":"disabled")+'>Log in with TMDB</button>'))+
+    '</div>'+
+
+    '<div class="setcard"><h3>3 · Backup</h3>'+
+    '<p>Download everything (including notes and rewatch answers) as a file, or load a backup from another device.</p>'+
+    '<div class="setrow"><button class="btn small ghost" id="expBtn">⬇ Export</button>'+
+    '<button class="btn small ghost" id="impBtn">⬆ Import</button>'+
+    '<input type="file" id="impFile" accept=".json" style="display:none"></div></div>'+
+
+    '<div class="setcard"><h3>About</h3><p>Made with Claude · Movie data & posters from <a href="https://www.themoviedb.org" target="_blank">TMDB</a>. This product uses the TMDB API but is not endorsed or certified by TMDB.</p></div>';
+
+  document.getElementById("keySave").onclick = async ()=>{
+    const k = document.getElementById("keyIn").value.trim();
+    const msg = document.getElementById("keyMsg");
+    if (!k){ msg.textContent="Enter a key first"; msg.className="okmsg bad"; return; }
+    S.key = k;
+    try { await tmdb("/configuration"); save(); msg.textContent="Key works ✓"; msg.className="okmsg good"; setTimeout(renderSettings,700); }
+    catch(e){ msg.textContent="Key rejected — double-check you copied the v3 API key"; msg.className="okmsg bad"; S.key=""; }
+  };
+  const lb = document.getElementById("loginBtn"); if (lb) lb.onclick = startLogin;
+  const ad = document.getElementById("approveDone"); if (ad) ad.onclick = ()=>finishLogin(pendingToken);
+  const lo = document.getElementById("logoutBtn"); if (lo) lo.onclick = logout;
+  const sn = document.getElementById("syncNow"); if (sn) sn.onclick = ()=>fullSync(false);
+  document.getElementById("expBtn").onclick = exportData;
+  document.getElementById("impBtn").onclick = ()=>document.getElementById("impFile").click();
+  document.getElementById("impFile").onchange = e=>{ if (e.target.files[0]) importData(e.target.files[0]); };
+}
+
+/* ================= boot ================= */
+(function boot(){
+  // returning from TMDB redirect login?
+  const p = new URLSearchParams(location.search);
+  if (p.get("request_token") && p.get("approved")==="true"){
+    history.replaceState(null,"",location.pathname);
+    S.key ? finishLogin(p.get("request_token")) : null;
+  }
+  render();
+  if (!S.key){ openSettings(); }
+  else if (S.session) fullSync(true);
+})();
+</script>
+</body>
+</html>
