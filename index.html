@@ -34,11 +34,11 @@
   /* search */
   .search-wrap { position: relative; margin-bottom: 16px; }
   .search-wrap input {
-    width: 100%; padding: 14px 16px 14px 44px; border: 1px solid var(--border); border-radius: 14px;
+    width: 100%; padding: 14px 16px 14px 52px; border: 1px solid var(--border); border-radius: 14px;
     font-size: 16px; background: var(--card2); color: var(--ink);
     box-shadow: 0 8px 24px rgba(0,0,0,.35);
   }
-  .search-wrap .mag { position: absolute; left: 15px; top: 13px; font-size: 17px; opacity: .6; }
+  .search-wrap .mag { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); font-size: 17px; opacity: .6; pointer-events: none; }
   .search-wrap input::placeholder { color: #565d78; }
   .search-wrap input:focus { outline: none; border-color: var(--gold); }
   .ac-list {
