@@ -230,6 +230,9 @@
 <script>
 "use strict";
 /* ================= constants ================= */
+/* Optional: paste a TMDB API key between the quotes below to share this app
+   with friends — they won't need their own key. Leave as-is to keep it private. */
+const DEFAULT_KEY = "a45cebbe4acd033ff16408c12e6882e4";
 const API = "https://api.themoviedb.org/3";
 const IMG = "https://image.tmdb.org/t/p/";
 const GENRE_IDS = {28:"Action",12:"Adventure",16:"Animation",35:"Comedy",80:"Crime",99:"Documentary",18:"Drama",
@@ -681,6 +684,8 @@ function renderSettings(){
 
 /* ================= boot ================= */
 (function boot(){
+  // use the shared key baked into the file, if one was set
+  if (!S.key && DEFAULT_KEY && DEFAULT_KEY.indexOf("PASTE_") === -1){ S.key = DEFAULT_KEY; save(); }
   // returning from TMDB redirect login?
   const p = new URLSearchParams(location.search);
   if (p.get("request_token") && p.get("approved")==="true"){
