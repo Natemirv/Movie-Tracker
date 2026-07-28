@@ -245,14 +245,15 @@
     <div class="setcard" style="padding:14px 16px">
       <span class="lbl">Mood</span><div class="filters" id="fmRow" style="margin-bottom:12px"></div>
       <span class="lbl">Era</span><div class="filters" id="feRow" style="margin-bottom:12px"></div>
-      <span class="lbl">Length</span><div class="filters" id="flRow" style="margin-bottom:6px"></div>
+      <span class="lbl">Length</span><div class="filters" id="flRow" style="margin-bottom:12px"></div>
+      <span class="lbl">Streaming</span><div class="filters" id="fsRow" style="margin-bottom:6px"></div>
       <div class="setrow"><button class="btn small" id="findGo">🎬 Show picks</button>
       <button class="btn small ghost" id="findShuffle">🎲 Shuffle</button></div>
     </div>
     <div class="grid" id="findGrid"><div class="empty"><span class="big">✨</span>Pick a vibe and hit “Show picks”.<br>Suggestions come from TMDB's top-rated lists — movies you've already seen or queued are hidden.</div></div>
   </div>
   <div class="panel" id="panel-settings"><div id="settingsBody"></div></div>
-  <div style="text-align:center;color:#3a415c;font-size:11px;margin-top:34px">v1.6</div>
+  <div style="text-align:center;color:#3a415c;font-size:11px;margin-top:34px">v1.7</div>
 </div>
 
 <div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
@@ -320,7 +321,7 @@ async function ensureCatalog(){
 let S = loadStore();
 let activeGenre = "All", currentTab = "watched", pendingToken = null;
 let activeMood = "All", underTwo = false;
-let findMood = "Any", findEra = "Any", findLen = "Any", findResults = [];
+let findMood = "Any", findEra = "Any", findLen = "Any", findResults = [], findFree = false;
 let watchOnly = false;
 let curRecs = [], curSimHost = null, curSimSource = null;
 const rtPending = {};
@@ -719,25 +720,51 @@ function renderFindChips(){
     '<button class="chip'+(k===findEra?" active":"")+'" data-fe="'+k+'">'+k+'</button>').join("");
   document.getElementById("flRow").innerHTML = Object.keys(LENGTHS).map(k=>
     '<button class="chip'+(k===findLen?" active":"")+'" data-fl="'+k+'">'+k+'</button>').join("");
+  document.getElementById("fsRow").innerHTML =
+    '<button class="chip'+(!findFree?" active":"")+'" data-fs="any">Any</button>'+
+    '<button class="chip'+(findFree?" active":"")+'" data-fs="free">▶ Free for me</button>';
 }
 async function runFind(shuffle){
   if (!S.key){ openSettings(); return; }
   const grid = document.getElementById("findGrid");
   grid.innerHTML = '<div class="empty"><span class="spin" style="font-size:24px">◐</span></div>';
-  const params = { sort_by:"vote_average.desc", "vote_count.gte":"300", include_adult:"false",
+  const lim = LENGTHS[findLen];
+  const base = { sort_by:"vote_average.desc", "vote_count.gte":"300", include_adult:"false",
     page: shuffle ? String(1+Math.floor(Math.random()*3)) : "1" };
-  if (findMood!=="Any") params.with_genres = MOOD_GENRE_IDS[findMood];
+  if (findMood!=="Any") base.with_genres = MOOD_GENRE_IDS[findMood];
   const era = ERAS[findEra];
-  if (era){ if (era[0]) params["primary_release_date.gte"]=era[0]; if (era[1]) params["primary_release_date.lte"]=era[1]; }
-  if (LENGTHS[findLen]){ params["with_runtime.lte"] = String(LENGTHS[findLen]); params["with_runtime.gte"]="60"; }
+  if (era){ if (era[0]) base["primary_release_date.gte"]=era[0]; if (era[1]) base["primary_release_date.lte"]=era[1]; }
+  if (lim){ base["with_runtime.lte"] = String(lim); base["with_runtime.gte"]="60"; }
   try {
-    let j = await tmdb("/discover/movie", params);
-    let res = j.results || [];
-    if (!res.length && params.page !== "1"){ params.page="1"; j = await tmdb("/discover/movie", params); res = j.results||[]; }
+    let res = [];
+    if (findFree){
+      const mine = Object.keys(S.myProviders);
+      if (!mine.length) toast("Tip: pick your services in Settings for better results");
+      const calls = [];
+      if (mine.length) calls.push(tmdb("/discover/movie", Object.assign({}, base,
+        { watch_region:"US", with_watch_providers: mine.join("|"), with_watch_monetization_types:"flatrate" })));
+      calls.push(tmdb("/discover/movie", Object.assign({}, base,
+        { watch_region:"US", with_watch_monetization_types:"free|ads" })));
+      const js = await Promise.all(calls.map(p=>p.catch(()=>({results:[]}))));
+      const seen = {};
+      js.forEach(j=>(j.results||[]).forEach(r=>{ if (!seen[r.id]){ seen[r.id]=1; res.push(r); } }));
+      res.sort((a,b)=>(b.vote_average||0)-(a.vote_average||0));
+    } else {
+      let j = await tmdb("/discover/movie", base);
+      res = j.results || [];
+      if (!res.length && base.page !== "1"){ base.page="1"; j = await tmdb("/discover/movie", base); res = j.results||[]; }
+    }
     findResults = res.map(movieFromTmdb).filter(m=>!S.watched[m.id] && !S.watchlist[m.id]).slice(0,18);
+    // TMDB's runtime filter has data gaps — verify against real runtimes when a length is set
+    if (lim && findResults.length){
+      const rts = await Promise.all(findResults.map(m=>
+        tmdb("/movie/"+m.id).then(j=>j.runtime||null).catch(()=>null)));
+      findResults = findResults.filter((m,i)=>{ m.runtime = rts[i]; return !m.runtime || m.runtime <= lim; });
+    }
     grid.innerHTML = findResults.length ? findResults.map((m,i)=>
       '<div class="pc" data-find="'+i+'">'+posterImg(m,"","w342")+
-      '<div class="st">'+(m.va?'★ '+m.va.toFixed(1):"")+'</div></div>').join("")
+      '<div class="st">'+(m.va?'★ '+m.va.toFixed(1):"")+
+      (m.runtime?' <span style="color:var(--muted);letter-spacing:0">· '+fmtRuntime(m.runtime)+'</span>':"")+'</div></div>').join("")
       : '<div class="empty">No matches — try loosening the filters.</div>';
   } catch(e){ grid.innerHTML = '<div class="empty">Could not load picks — check your internet.</div>'; }
 }
@@ -854,6 +881,8 @@ document.addEventListener("click", e=>{
   if (fe){ findEra = fe.getAttribute("data-fe"); renderFindChips(); runFind(false); return; }
   const fl = e.target.closest("[data-fl]");
   if (fl){ findLen = fl.getAttribute("data-fl"); renderFindChips(); runFind(false); return; }
+  const fs = e.target.closest("[data-fs]");
+  if (fs){ findFree = fs.getAttribute("data-fs")==="free"; renderFindChips(); runFind(false); return; }
   if (e.target.closest("#findGo")){ runFind(false); return; }
   if (e.target.closest("#findShuffle")){ runFind(true); return; }
   const ff = e.target.closest("[data-find]");
