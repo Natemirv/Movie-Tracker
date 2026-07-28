@@ -74,6 +74,14 @@
   .rec .ri { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 700; cursor: pointer; }
   .rec .ri .y { color: var(--muted); font-weight: 400; font-size: 12px; }
   .rec .addedtxt { color: var(--green); font-size: 12px; font-weight: 800; white-space: nowrap; }
+  .provrow { display: flex; flex-wrap: wrap; gap: 8px; }
+  .prov { display: inline-flex; align-items: center; gap: 7px; background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 20px; padding: 6px 13px; font-size: 12.5px; font-weight: 700; color: var(--muted);
+    cursor: pointer; font-family: inherit; }
+  .prov img { width: 20px; height: 20px; border-radius: 5px; }
+  .prov.mine { border-color: var(--green); color: var(--green); background: rgba(61,220,132,.1); }
+  .avail { color: var(--green); font-weight: 800; }
+  .avail.free { color: var(--gold); }
   .thinking { font-size: 13px; color: var(--muted); }
   .spin { display: inline-block; animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -244,7 +252,7 @@
     <div class="grid" id="findGrid"><div class="empty"><span class="big">✨</span>Pick a vibe and hit “Show picks”.<br>Suggestions come from TMDB's top-rated lists — movies you've already seen or queued are hidden.</div></div>
   </div>
   <div class="panel" id="panel-settings"><div id="settingsBody"></div></div>
-  <div style="text-align:center;color:#3a415c;font-size:11px;margin-top:34px">v1.5</div>
+  <div style="text-align:center;color:#3a415c;font-size:11px;margin-top:34px">v1.6</div>
 </div>
 
 <div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
@@ -288,16 +296,37 @@ const ERAS = { "Any":null, "2020s":["2020-01-01","2029-12-31"], "2010s":["2010-0
   "Classics":[null,"1979-12-31"] };
 const LENGTHS = { "Any":null, "< 90m":90, "< 2h":120, "< 2.5h":150 };
 
+/* ---- streaming providers (data via TMDB / JustWatch) ---- */
+function myFlat(w){ return (w.provFlat||[]).filter(id=>S.myProviders[id]); }
+function watchable(w){ return myFlat(w).length > 0 || (w.provFree||[]).length > 0; }
+function provName(id){
+  const e = (S.provCatalog||[]).find(x=>x[0]==id);
+  return e ? e[1] : "streaming";
+}
+async function ensureCatalog(){
+  if (!S.key) return;
+  if (S.provCatalog && S.provCatalogAt && Date.now()-S.provCatalogAt < 30*864e5) return;
+  try {
+    const j = await tmdb("/watch/providers/movie", { watch_region:"US" });
+    S.provCatalog = (j.results||[])
+      .sort((a,b)=>(a.display_priorities&&a.display_priorities.US||999)-(b.display_priorities&&b.display_priorities.US||999))
+      .slice(0,24).map(p=>[p.provider_id, p.provider_name, p.logo_path]);
+    S.provCatalogAt = Date.now();
+    save();
+  } catch(e){}
+}
+
 /* ================= state ================= */
 let S = loadStore();
 let activeGenre = "All", currentTab = "watched", pendingToken = null;
 let activeMood = "All", underTwo = false;
 let findMood = "Any", findEra = "Any", findLen = "Any", findResults = [];
+let watchOnly = false;
 let curRecs = [], curSimHost = null, curSimSource = null;
 const rtPending = {};
 
 function loadStore() {
-  let base = { key:"", session:"", accountId:null, watched:{}, watchlist:{} };
+  let base = { key:"", session:"", accountId:null, watched:{}, watchlist:{}, myProviders:{}, provCatalog:null, provCatalogAt:0 };
   try { return Object.assign(base, JSON.parse(localStorage.getItem("movietracker")) || {}); }
   catch(e){ return base; }
 }
@@ -442,7 +471,9 @@ function openMovieModal(m){
     '<div class="sec"><span class="lbl">Note</span><textarea id="noteBox" placeholder="One-line thoughts (optional)"></textarea></div>'+
     '<div class="sec" id="moodSec" style="display:none"><span class="lbl">Mood (if adding to watchlist)</span><div class="filters" id="moodRow" style="margin:0"></div></div>'+
     '<div class="modal-actions" id="modalActions"></div>'+
+    '<div id="watchBox"></div>'+
     '<div id="simBox"></div>';
+  loadWatchBox(m);
 
   const ratingNum = document.getElementById("ratingNum");
   const tierPrev = document.getElementById("tierPrev");
@@ -518,6 +549,29 @@ function openMovieModal(m){
   closeBtn.onclick = closeModal;
   acts.appendChild(closeBtn);
   overlay.classList.add("open");
+}
+
+/* ================= where to watch ================= */
+async function loadWatchBox(m){
+  const box = document.getElementById("watchBox");
+  if (!box || !S.key) return;
+  try {
+    const j = await tmdb("/movie/"+m.id+"/watch/providers");
+    const us = (j.results||{}).US||{};
+    const flat = us.flatrate||[], free = (us.free||[]).concat(us.ads||[]), rent = us.rent||[];
+    if (!box.isConnected) return;
+    if (!flat.length && !free.length){
+      box.innerHTML = '<div class="sec"><span class="lbl">Where to watch (US)</span><div class="thinking">'+
+        (rent.length ? "Not on any streaming service — rent/buy only." : "No streaming info available.")+'</div></div>';
+      return;
+    }
+    const chip = (p, mine, fr)=>'<span class="prov'+(mine?" mine":"")+'">'+
+      (p.logo_path?'<img src="'+IMG+'w45'+p.logo_path+'" alt="">':"")+esc(p.provider_name)+
+      (mine?" ✓":(fr?" · free":""))+'</span>';
+    box.innerHTML = '<div class="sec"><span class="lbl">Where to watch (US)</span><div class="provrow">'+
+      flat.map(p=>chip(p, !!S.myProviders[p.provider_id], false)).join("")+
+      free.map(p=>chip(p, false, true)).join("")+'</div></div>';
+  } catch(e){ if (box.isConnected) box.innerHTML = ""; }
 }
 
 /* ================= similar movies (TMDB) ================= */
@@ -750,16 +804,19 @@ function render(){
     '<button class="chip'+(activeMood==="All"?" active":"")+'" data-moodf="All">All</button>'+
     Object.keys(MOODS).map(k=>'<button class="chip'+(k===activeMood?" active":"")+'" data-moodf="'+k+'">'+MOODS[k][0]+" "+MOODS[k][1]+'</button>').join("")+
     '<button class="chip'+(underTwo?" active":"")+'" id="underTwoBtn">⏱ under 2h</button>'+
+    '<button class="chip'+(watchOnly?" active":"")+'" id="watchOnlyBtn">▶ can watch now</button>'+
     '<button class="chip" id="pickBtn" style="border-color:var(--gold);color:var(--gold)">🎲 Pick for me</button>' : "";
 
   // watchlist
-  const wlShown = wl.filter(m=>(activeMood==="All"||m.mood===activeMood)&&(!underTwo||(m.runtime&&m.runtime<=120)));
+  const wlShown = wl.filter(m=>(activeMood==="All"||m.mood===activeMood)&&(!underTwo||(m.runtime&&m.runtime<=120))&&(!watchOnly||watchable(m)));
   const wlEl = document.getElementById("wlList");
   wlEl.innerHTML = wl.length ? (wlShown.length ? wlShown.map(m=>{
     const mk = MOODS[m.mood];
     return '<div class="wl-item">'+posterImg(m,"","w154")+
     '<div class="wl-info"><div class="wl-title">'+esc(m.title)+(m.year?'<span class="yr">'+m.year+'</span>':"")+'</div>'+
-    '<div class="wl-sub">'+(m.genres||[]).slice(0,2).join(" · ")+(m.runtime?' · '+fmtRuntime(m.runtime):"")+'</div>'+
+    '<div class="wl-sub">'+(m.genres||[]).slice(0,2).join(" · ")+(m.runtime?' · '+fmtRuntime(m.runtime):"")+
+    (myFlat(m).length?' <span class="avail">▶ '+esc(provName(myFlat(m)[0]))+'</span>'
+      :((m.provFree||[]).length?' <span class="avail free">▶ free · '+esc(provName(m.provFree[0]))+'</span>':""))+'</div>'+
     (mk?'<button class="chip mood-mini" data-cycle="'+m.id+'" title="Tap to change mood">'+mk[0]+" "+mk[1]+'</button>':"")+
     '</div>'+
     '<button class="btn small" data-watch="'+m.id+'">✓ Watched it</button>'+
@@ -773,11 +830,19 @@ function render(){
 
 function ensureRuntimes(){
   if (!S.key) return;
+  const now = Date.now();
   Object.values(S.watchlist).forEach(w=>{
-    if (!("runtime" in w) && !rtPending[w.id]){
+    const stale = !w.provAt || (now - w.provAt) > 7*864e5; // refresh weekly — catalogs rotate
+    if ((!("runtime" in w) || stale) && !rtPending[w.id]){
       rtPending[w.id] = 1;
-      tmdb("/movie/"+w.id).then(j=>{ w.runtime = j.runtime||null; save(); render(); })
-        .catch(()=>{ delete rtPending[w.id]; });
+      tmdb("/movie/"+w.id, { append_to_response:"watch/providers" }).then(j=>{
+        w.runtime = j.runtime||null;
+        const us = ((j["watch/providers"]||{}).results||{}).US||{};
+        w.provFlat = (us.flatrate||[]).map(p=>p.provider_id);
+        w.provFree = (us.free||[]).concat(us.ads||[]).map(p=>p.provider_id);
+        w.provAt = Date.now();
+        save(); render();
+      }).catch(()=>{ delete rtPending[w.id]; });
     }
   });
 }
@@ -810,8 +875,9 @@ document.addEventListener("click", e=>{
   const mf = e.target.closest("[data-moodf]");
   if (mf){ activeMood = mf.getAttribute("data-moodf"); render(); return; }
   if (e.target.closest("#underTwoBtn")){ underTwo = !underTwo; render(); return; }
+  if (e.target.closest("#watchOnlyBtn")){ watchOnly = !watchOnly; render(); return; }
   if (e.target.closest("#pickBtn")){
-    const pool = Object.values(S.watchlist).filter(m=>(activeMood==="All"||m.mood===activeMood)&&(!underTwo||(m.runtime&&m.runtime<=120)));
+    const pool = Object.values(S.watchlist).filter(m=>(activeMood==="All"||m.mood===activeMood)&&(!underTwo||(m.runtime&&m.runtime<=120))&&(!watchOnly||watchable(m)));
     if (pool.length) openMovieModal(pool[Math.floor(Math.random()*pool.length)]);
     else toast("Nothing matches this filter");
     return;
@@ -857,13 +923,22 @@ function renderSettings(){
           : '<button class="btn" id="loginBtn" '+(hasKey?"":"disabled")+'>Log in with TMDB</button>'))+
     '</div>'+
 
-    '<div class="setcard"><h3>3 · Backup</h3>'+
+    '<div class="setcard"><h3>3 · My streaming services</h3>'+
+    '<p>Tap what you pay for. Watchlist movies you can stream get a ▶ badge, and the “can watch now” filter uses this.</p>'+
+    '<div class="provrow" id="provPick">'+
+    (S.provCatalog ? S.provCatalog.map(p=>
+      '<button class="prov'+(S.myProviders[p[0]]?" mine":"")+'" data-prov="'+p[0]+'">'+
+      (p[2]?'<img src="'+IMG+'w45'+p[2]+'" alt="">':"")+esc(p[1])+(S.myProviders[p[0]]?" ✓":"")+'</button>').join("")
+      : '<span class="thinking">'+(hasKey?"Loading services…":"Add your API key first.")+'</span>')+
+    '</div></div>'+
+
+    '<div class="setcard"><h3>4 · Backup</h3>'+
     '<p>Download everything (including notes and rewatch answers) as a file, or load a backup from another device.</p>'+
     '<div class="setrow"><button class="btn small ghost" id="expBtn">⬇ Export</button>'+
     '<button class="btn small ghost" id="impBtn">⬆ Import</button>'+
     '<input type="file" id="impFile" accept=".json" style="display:none"></div></div>'+
 
-    '<div class="setcard"><h3>About</h3><p>Made with Claude · Movie data & posters from <a href="https://www.themoviedb.org" target="_blank">TMDB</a>. This product uses the TMDB API but is not endorsed or certified by TMDB.</p></div>';
+    '<div class="setcard"><h3>About</h3><p>Made with Claude · Movie data & posters from <a href="https://www.themoviedb.org" target="_blank">TMDB</a>. Streaming availability data provided by <a href="https://www.justwatch.com" target="_blank">JustWatch</a> via TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</p></div>';
 
   document.getElementById("keySave").onclick = async ()=>{
     const k = document.getElementById("keyIn").value.trim();
@@ -880,6 +955,14 @@ function renderSettings(){
   document.getElementById("expBtn").onclick = exportData;
   document.getElementById("impBtn").onclick = ()=>document.getElementById("impFile").click();
   document.getElementById("impFile").onchange = e=>{ if (e.target.files[0]) importData(e.target.files[0]); };
+  document.querySelectorAll("[data-prov]").forEach(b=>{
+    b.onclick = ()=>{
+      const id = b.getAttribute("data-prov");
+      if (S.myProviders[id]) delete S.myProviders[id]; else S.myProviders[id] = true;
+      save(); renderSettings(); render();
+    };
+  });
+  if (!S.provCatalog && hasKey) ensureCatalog().then(renderSettings);
 }
 
 /* ================= boot ================= */
@@ -889,6 +972,7 @@ function renderSettings(){
   // v1.4 migration: auto-assign moods to existing watchlist items
   Object.values(S.watchlist).forEach(w=>{ if (!w.mood) w.mood = moodFromGenres(w.genres); });
   renderFindChips();
+  if (S.key) ensureCatalog();
   // returning from TMDB redirect login?
   const p = new URLSearchParams(location.search);
   if (p.get("request_token") && p.get("approved")==="true"){
